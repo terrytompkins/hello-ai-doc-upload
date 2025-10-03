@@ -4,6 +4,7 @@ import os
 from dotenv import load_dotenv
 import tempfile
 import json
+from pptx import Presentation
 
 # Load environment variables
 load_dotenv()
@@ -39,15 +40,51 @@ def get_openai_client(api_key):
 def process_document(file_content, filename):
     """Process the uploaded document and extract text content"""
     try:
-        # For now, we'll assume the file is a text file
-        # In a real application, you might want to handle PDFs, Word docs, etc.
-        if filename.endswith('.txt'):
+        if filename.endswith('.txt') or filename.endswith('.md'):
+            # Handle text and markdown files
             return file_content.decode('utf-8')
+        elif filename.endswith('.pptx'):
+            # Handle PowerPoint files
+            return process_pptx_file(file_content)
         else:
             # For other file types, try to decode as text
             return file_content.decode('utf-8')
     except Exception as e:
         st.error(f"Error processing document: {str(e)}")
+        return ""
+
+def process_pptx_file(file_content):
+    """Extract text content from a PowerPoint file"""
+    try:
+        # Create a temporary file to save the PowerPoint content
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pptx') as temp_file:
+            temp_file.write(file_content)
+            temp_file_path = temp_file.name
+        
+        # Load the presentation
+        presentation = Presentation(temp_file_path)
+        
+        # Extract text from all slides
+        extracted_text = []
+        for i, slide in enumerate(presentation.slides, 1):
+            slide_text = []
+            slide_text.append(f"--- Slide {i} ---")
+            
+            # Extract text from all shapes in the slide
+            for shape in slide.shapes:
+                if hasattr(shape, "text") and shape.text.strip():
+                    slide_text.append(shape.text.strip())
+            
+            if len(slide_text) > 1:  # More than just the slide header
+                extracted_text.extend(slide_text)
+        
+        # Clean up temporary file
+        os.unlink(temp_file_path)
+        
+        return "\n".join(extracted_text) if extracted_text else "No text content found in the PowerPoint file."
+        
+    except Exception as e:
+        st.error(f"Error processing PowerPoint file: {str(e)}")
         return ""
 
 def chat_with_ai(client, user_message, document_context=""):
@@ -106,8 +143,8 @@ with col1:
     st.subheader("Upload Document")
     uploaded_file = st.file_uploader(
         "Choose a document to upload:",
-        type=['txt', 'md'],
-        help="Currently supports .txt and .md files"
+        type=['txt', 'md', 'pptx'],
+        help="Supports .txt, .md, and .pptx files"
     )
     
     if uploaded_file is not None:
@@ -179,5 +216,5 @@ with col2:
 st.markdown("---")
 st.markdown("**Instructions:**")
 st.markdown("1. Enter your OpenAI API key in the left panel")
-st.markdown("2. Upload a document (currently supports .txt and .md files)")
+st.markdown("2. Upload a document (supports .txt, .md, and .pptx files)")
 st.markdown("3. Start chatting with the AI about your document!")
